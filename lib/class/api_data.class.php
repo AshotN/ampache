@@ -27,22 +27,12 @@
  * are all static calls
  *
  */
-class XML_Data
+class API_Data
 {
     // This is added so that we don't pop any webservers
     private static $limit  = 5000;
     private static $offset = 0;
     private static $type   = '';
-
-    /**
-     * constructor
-     *
-     * We don't use this, as its really a static class
-     */
-    private function __construct()
-    {
-        // Rien a faire
-    } // constructor
 
     /**
      * set_offset
@@ -61,10 +51,10 @@ class XML_Data
     /**
      * set_limit
      *
-     * This sets the limit for any ampache transactions
+     * This sets the limit for any Ampache transactions
      *
      * @param    integer    $limit    (description here...)
-     * @return    void
+     * @return bool
      */
     public static function set_limit($limit)
     {
@@ -74,20 +64,26 @@ class XML_Data
 
         $limit       = intval($limit);
         self::$limit = $limit;
+        return true;
     } // set_limit
 
     /**
      * error
      *
-     * This generates a standard XML Error message
+     * This generates a standard Error message
      * nothing fancy here...
      *
-     * @param    integer    $code    Error code
-     * @param    string    $string    Error message
+     * @param integer $code Error code
+     * @param string $string Error message
+     * @param string $outputFormat XML or JSON
      * @return    string    return error message xml
      */
-    public static function error($code,$string)
+    public static function error($code, $string, $outputFormat)
     {
+        if ($outputFormat === 'JSON') {
+            $JSON = json_encode(["error" => ["code" => $code, "message" => $string]], JSON_PRETTY_PRINT);
+            return $JSON;
+        }
         $string = "\t<error code=\"$code\"><![CDATA[$string]]></error>";
         return self::output_xml($string);
     } // error
@@ -97,12 +93,22 @@ class XML_Data
      *
      * This takes two values, first the key second the string
      *
-     * @param    string    $key    (description here...)
-     * @param    string    $string    xml data
+     * @param string $key (description here...)
+     * @param string $string xml data
+     * @param string $outputFormat XML or JSON
      * @return    string    return xml
      */
-    public static function single_string($key, $string='')
+    public static function single_string($key, $string='', $outputFormat='') //TODO: Consider putting $outputFormat as first parameter to avoid this
     {
+        if ($outputFormat === 'JSON') {
+            if (!empty($string)) {
+                $JSON = json_encode([$key => $string], JSON_PRETTY_PRINT);
+            } else {
+                $JSON = json_encode(["message" => $key], JSON_PRETTY_PRINT);
+            }
+
+            return $JSON;
+        }
         $final = self::_header();
         if (!empty($string)) {
             $final .= "\t<$key><![CDATA[$string]]></$key>";
@@ -143,42 +149,63 @@ class XML_Data
     /**
      * tags_string
      *
-     * This returns the formatted 'tags' string for an xml document
-     *
+     * This returns the formatted 'tags' string
+     * @param array $tags
+     * @param string $outputFormat XML or JSON
+     * @return string|null
      */
-    private static function tags_string($tags)
+    private static function tags_string($tags, $outputFormat)
     {
-        $string = '';
-
         if (is_array($tags)) {
             $atags = array();
             foreach ($tags as $tag_id => $data) {
                 if (array_key_exists($data['id'], $atags)) {
                     $atags[$data['id']]['count']++;
                 } else {
-                    $atags[$data['id']] = array('name' => $data['name'],
-                        'count' => 1);
+                    $atags[$data['id']] = ['name' => $data['name'],
+                        'count' => 1];
                 }
             }
 
+            if ($outputFormat === 'JSON') {
+                $JSON = null;
+                foreach ($atags as $id => $data) {
+                    $JSON['id'] = $id;
+                    $JSON['count'] = $data['count'];
+                    $JSON['name'] = $data['name'];
+                }
+
+                return json_encode($JSON); //TODO: Test
+            }
+            $string = '';
+
             foreach ($atags as $id => $data) {
-                $string .= "\t<tag id=\"" . $id . "\" " .
-                "count=\"" . $data['count'] . "\" " .
-                "><![CDATA[" . $data['name'] . "]]></tag>\n";
+            $string .= "\t<tag id=\"" . $id . "\" " .
+            "count=\"" . $data['count'] . "\" " .
+            "><![CDATA[" . $data['name'] . "]]></tag>\n";
+
+            return $string;
             }
         }
 
-        return $string;
-    } // tags_string
+        if ($outputFormat === 'JSON') {
+            return null; //TODO: is this proper?
+        }
+
+        return '';
+        } // tags_string
 
 
     /**
      * playlist_song_tracks_string
      *
-     * This returns the formatted 'playlistTrack' string for an xml document
-     *
+     * This returns the formatted 'playlistTrack' string
+     * @param $song
+     * @param $playlist_data
+     * @param string $outputFormat XML or JSON
+     * @return string
      */
-    private static function playlist_song_tracks_string($song, $playlist_data)
+    private static function playlist_song_tracks_string($song, $playlist_data, $outputFormat)
     {
         if (empty($playlist_data)) {
             return "";
@@ -186,8 +213,14 @@ class XML_Data
         $playlist_track = "";
         foreach ($playlist_data as $playlist) {
             if ($playlist["object_id"] == $song->id) {
+                if ($outputFormat === 'JSON') {
+                    return json_encode($playlist["track"]); //TODO: Test
+                }
                 return "\t<playlisttrack>" . $playlist["track"] . "</playlisttrack>\n";
             }
+        }
+        if ($outputFormat === 'JSON') {
+            return null; //TODO: is this proper?
         }
         return "";
     } // playlist_song_tracks_string
@@ -201,8 +234,8 @@ class XML_Data
      * @param    boolean    $callback    (description here...)
      * @return    string    return xml
      */
-    public static function keyed_array($array,$callback='')
-    {
+    public static function keyed_array($array,$callback=false) //TODO: What is callback doing?
+    {//TODO Does this need JSON equivilant
         $string = '';
         // Foreach it
         foreach ($array as $key=>$value) {
@@ -233,23 +266,38 @@ class XML_Data
     /**
      * tags
      *
-     * This returns tags to the user, in a pretty xml document with the information
+     * This returns tags to the user, in a pretty document with the information
      *
      * @param    array    $tags    (description here...)
-     * @return    string    return xml
+     * @param string $outputFormat XML or JSON
+     * @return    string
      */
-    public static function tags($tags)
+    public static function tags($tags, $outputFormat)
     {
         if (count($tags) > self::$limit or self::$offset > 0) {
             $tags = array_splice($tags,self::$offset,self::$limit);
         }
 
         $string = '';
+        $JSON = [];
 
         foreach ($tags as $tag_id) {
             $tag    = new Tag($tag_id);
             $counts = $tag->count();
-            $string .= "<tag id=\"$tag_id\">\n" .
+            if ($outputFormat === 'JSON') {
+                array_push($JSON, ["tag" => [
+                    'id' => $tag_id,
+                    'name' => $tag->name,
+                    'albums' => intval($counts['album']),
+                    'artists' => intval($counts['artist']),
+                    'songs' => intval($counts['song']),
+                    'videos' => intval($counts['video']),
+                    'playlists' => intval($counts['playlist']),
+                    'stream' => intval($counts['live_stream'])
+                ]]);
+            }
+            else {
+                $string .= "<tag id=\"$tag_id\">\n" .
                     "\t<name><![CDATA[$tag->name]]></name>\n" .
                     "\t<albums>" . intval($counts['album']) . "</albums>\n" .
                     "\t<artists>" . intval($counts['artist']) . "</artists>\n" .
@@ -258,8 +306,12 @@ class XML_Data
                     "\t<playlists>" . intval($counts['playlist']) . "</playlists>\n" .
                     "\t<stream>" . intval($counts['live_stream']) . "</stream>\n" .
                     "</tag>\n";
+            }
         } // end foreach
 
+        if ($outputFormat === 'JSON') {
+            return json_encode($JSON, JSON_PRETTY_PRINT);
+        }
         return self::output_xml($string);
     } // tags
 

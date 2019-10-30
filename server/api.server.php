@@ -20,8 +20,11 @@
  *
  */
 
-//The type of data to return to the client, XML default as default or JSON
-$dataFormat = "XML"; //Consider an ENUM
+/**
+ * The type of data to return to the client, XML default as default or JSON
+ * @var string $outputFormat
+ */
+$outputFormat = "XML"; //TODO: Consider an ENUM
 
 /**
  * This is accessed remotly to allow outside scripts access to ampache information
@@ -37,7 +40,7 @@ if (Core::get_request('action') != 'handshake') {
 
 // If we aren't requesting JSON just assume XML
 if (Core::get_request('dataFormat') === 'JSON') {
-    $dataFormat = "JSON";
+    $outputFormat = "JSON";
 }
 
 /* Set the correct headers */
@@ -49,11 +52,7 @@ if (!AmpConfig::get('access_control')) {
     ob_end_clean();
     debug_event('xml.server', 'Error Attempted to use XML API with Access Control turned off', 3);
 
-    if ($dataFormat === "XML") {
-        echo XML_Data::error('501', T_('Access Control not enabled'));
-    } elseif ($dataFormat === "JSON") {
-        echo JSON_Data::error('501', T_('Access Control not Enabled'));
-    }
+    echo API_Data::error('501', T_('Access Control not enabled'), $outputFormat);
 
     return false;
 }
@@ -66,11 +65,7 @@ if (!Session::exists('api', $_REQUEST['auth']) && Core::get_request('action') !=
     debug_event('Access Denied', 'Invalid Session attempt to API [' . Core::get_request('action') . ']', 3);
     ob_end_clean();
 
-    if ($dataFormat === "XML") {
-        echo XML_Data::error('401', T_('Session Expired'));
-    } elseif ($dataFormat === "JSON") {
-        echo JSON_Data::error('401', T_('Session Expired'));
-    }
+    echo API_Data::error('401', T_('Session Expired'), $outputFormat);
 
     return false;
 }
@@ -89,11 +84,8 @@ if (!Access::check_network('init-api', $username, 5, null, $apikey)) {
     debug_event('Access Denied', 'Unauthorized access attempt to API [' . (string) filter_input(INPUT_SERVER, 'REMOTE_ADDR', FILTER_VALIDATE_IP) . ']', 3);
     ob_end_clean();
 
-    if ($dataFormat === "XML") {
-        echo XML_Data::error('403', T_('Unauthorized access attempt to API - ACL Error'));
-    } elseif ($dataFormat === "JSON") {
-        echo JSON_Data::error('403', T_('Unauthorized access attempt to API - ACL Error'));
-    }
+    echo API_Data::error('403', T_('Unauthorized access attempt to API - ACL Error'), $outputFormat);
+
 
     return false;
 }
@@ -133,8 +125,4 @@ foreach ($methods as $method) {
 
 // If we manage to get here, we still need to return something
 ob_end_clean();
-if ($dataFormat === "XML") {
-    echo XML_Data::error('405', T_('Invalid Request'));
-} elseif ($dataFormat === "JSON") {
-    echo JSON_Data::error('405', T_('Invalid Request'));
-}
+echo API_Data::error('405', T_('Invalid Request'), $outputFormat);
